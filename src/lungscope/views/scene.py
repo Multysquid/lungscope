@@ -48,8 +48,10 @@ class LungScene:
 
     ``mesh`` is the line mesh to draw (``entity_mesh`` of a study, or a mesh file). ``times``
     (output times in s) and ``quantities`` (values per element and time, in entity order) come
-    from a study; quantities are only offered with at least two output times. The scene starts
-    colored by DEFAULT_COLOR_BY (or the first choice), seen from the front.
+    from a study; quantities are only offered with at least two output times. ``lung`` is the
+    lung surface around the tree in mesh coordinates, e.g. ``lobe_surface`` of lobe masks;
+    without it, the illustrative lung of ``lung_surface`` is drawn. The scene starts colored by
+    DEFAULT_COLOR_BY (or the first choice), seen from the front.
     """
 
     def __init__(
@@ -57,6 +59,7 @@ class LungScene:
         mesh: pv.UnstructuredGrid,
         times: Sequence[float] | np.ndarray | None = None,
         quantities: Sequence[TimeQuantity] = (),
+        lung: pv.PolyData | None = None,
     ) -> None:
         self.mesh = mesh
         self.times = np.zeros(0) if times is None else np.asarray(times, dtype=float)
@@ -90,7 +93,8 @@ class LungScene:
         self.color_by = DEFAULT_COLOR_BY if DEFAULT_COLOR_BY in self.options else self.options[0]
         self.legend = self.show(self.color_by)
         self.lung_actor = None
-        lung = lung_surface(mesh)
+        if lung is None:
+            lung = lung_surface(mesh)
         if lung is not None:
             self.lung_actor = self.plotter.add_mesh(
                 lung, color=LUNG_COLOR, opacity=LUNG_OPACITY, smooth_shading=True, show_scalar_bar=False

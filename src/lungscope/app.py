@@ -1,8 +1,13 @@
-"""Entry point for the local LungScope application.
+"""Entry points for the local LungScope application.
 
     lungscope --study output/random_field/study.json   lung viewer for a forward-UQ study
     lungscope --mesh examples/random_field/lung.vtu     lung viewer for a single mesh file
     lungscope                                           the starter scene
+
+    lungscope --study ... --lobes examples/random_field_large
+        the lung drawn from lobe masks (lobe_*.nii.gz) instead of the illustrative one
+    lungscope-fit-lobes examples/random_field_large --mesh examples/random_field_large/lung.vtu
+        fit where the lobe masks sit on the mesh and write lobes.json next to them
 
 trame's own options apply as well, e.g. ``--port 8080``, or ``--server`` to open no browser.
 
@@ -13,8 +18,10 @@ plots. A click opens the popup with the quantity shown, or the pressure while th
 not change over time; the popup follows the time step and the coloring until it is closed.
 """
 
+import argparse
 import asyncio
 import math
+import os
 from pathlib import Path
 
 from trame.app import asynchronous, get_server
@@ -22,8 +29,8 @@ from trame.ui.vuetify3 import SinglePageLayout, SinglePageWithDrawerLayout
 from trame.widgets import html
 from trame.widgets import vuetify3 as v3
 
-from lungscope.analysis import time_quantities
-from lungscope.data import load_mesh, load_study
+from lungscope.analysis import fit_lobes, terminal_unit_centres, time_quantities
+from lungscope.data import load_lobes, load_mesh, load_study, read_input, save_lobe_transform
 from lungscope.views import (
     LungScene,
     add_demo_view,
@@ -33,6 +40,7 @@ from lungscope.views import (
     element_title,
     entity_mesh,
     figure_at,
+    lobe_surface,
     run_chart,
 )
 
@@ -62,6 +70,12 @@ def main() -> None:
         "--study", metavar="PATH", help="study.json of a forward-UQ study (all completed samples, with time)"
     )
     source.add_argument("--mesh", metavar="PATH", help="a single lung model file (.vtu with line elements)")
+    server.cli.add_argument(
+        "--lobes",
+        metavar="DIR",
+        help="folder with lobe masks (lobe_*.nii.gz) and lobes.json, which places them on the mesh; "
+        "the lung is drawn from them",
+    )
     args, unknown = server.cli.parse_known_args()
     given = args.study if args.study is not None else args.mesh
     if given is None:
@@ -69,18 +83,76 @@ def main() -> None:
         # mistyped --study or a path without it, which must not quietly open the starter scene
         if unknown:
             server.cli.error(f"unrecognized arguments: {' '.join(unknown)}")
+        if args.lobes is not None:
+            server.cli.error("--lobes needs --study or --mesh")
         build_starter(server)
     else:
         path = Path(given).expanduser().resolve()
         if not path.is_file():
             server.cli.error(f"file not found: {path}")
+        lung = None
+        if args.lobes is not None:  # before the study, which can take minutes to load
+            try:
+                lobes = load_lobes(args.lobes)
+            except (FileNotFoundError, ValueError) as error:
+                server.cli.error(str(error))
+            placed = [lobes.mesh_from_index(lobe) for lobe in lobes.lobes]
+            lung = lobe_surface([lobe.mask for lobe in lobes.lobes], placed)
         if args.study is not None:
             study = load_study(path)
-            scene = LungScene(entity_mesh(study), study["time"].values, time_quantities(study))
+            scene = LungScene(entity_mesh(study), study["time"].values, time_quantities(study), lung=lung)
             build_viewer(server, scene, f"{path.parent.name} ({study.sizes['realization']} samples)")
         else:
-            build_viewer(server, LungScene(load_mesh(path)), path.name)
+            build_viewer(server, LungScene(load_mesh(path), lung=lung), path.name)
     server.start()
+
+
+def fit_lobes_main() -> None:
+    """lungscope-fit-lobes: fit where lobe masks sit on a lung model's mesh, write lobes.json.
+
+    For masks that come without the transform to the mesh, e.g. the CT lobes of a PneumoGen tree.
+    An existing lobes.json, which may hold a known transform, is only replaced with --force.
+    """
+    parser = argparse.ArgumentParser(
+        prog="lungscope-fit-lobes",
+        description="Fit the affine transform that puts a lung model's terminal units into its lobe masks "
+        "(lobe_*.nii.gz), and write it to lobes.json in the masks' folder for lungscope --lobes.",
+    )
+    parser.add_argument("lobes", metavar="DIR", help="folder with the lobe masks")
+    parser.add_argument(
+        "--mesh", metavar="PATH", required=True, help="the lung model (.vtu with line elements, v0 on terminal units)"
+    )
+    parser.add_argument("--force", action="store_true", help="replace an existing lobes.json")
+    args = parser.parse_args()
+    mesh = Path(args.mesh).expanduser().resolve()
+    if not mesh.is_file():
+        parser.error(f"file not found: {mesh}")
+    try:
+        lobes = load_lobes(args.lobes, placed=False)
+    except (FileNotFoundError, ValueError) as error:
+        parser.error(str(error))
+    if lobes.mesh_from_world is not None and not args.force:
+        parser.error(f"{lobes.folder} already has a lobes.json; --force replaces it")
+    endpoints, arrays = read_input(mesh)
+    volume = arrays.get("v0", arrays.get("v_0"))
+    units = terminal_unit_centres(endpoints, volume) if volume is not None else []
+    if len(units) < 4:
+        parser.error(f"{mesh}: too few terminal units (elements with v0 > 0) to fit")
+    print(f"Fitting {len(units)} terminal units into {len(lobes.lobes)} lobes ...", flush=True)
+    fit = fit_lobes(units, [lobe.mask for lobe in lobes.lobes], [lobe.world_from_index for lobe in lobes.lobes])
+    record = {
+        "method": "lungscope-fit-lobes: affine transform that puts the terminal units into the lobes "
+        "(iterative closest points from 48 axis orders)",
+        "note": "fitted, not given: replace mesh_from_world with the transform the masks belong to, if known",
+        "mesh": os.path.relpath(mesh, lobes.folder),
+        "terminal_units": len(units),
+        "inside": round(fit.inside, 4),
+        "similarity_inside": round(fit.similarity_inside, 4),
+        "units_per_lobe": {lobe.name: count for lobe, count in zip(lobes.lobes, fit.per_lobe, strict=True)},
+    }
+    path = save_lobe_transform(lobes.folder, fit.mesh_from_world, record)
+    print(f"{fit.inside:.1%} of the terminal units are inside a lobe (without stretching: {fit.similarity_inside:.1%}).")
+    print(f"Wrote {path}")
 
 
 def build_starter(server) -> SinglePageLayout:

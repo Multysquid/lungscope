@@ -1,13 +1,18 @@
 """Spatial views and linked plots for the trame application.
 
 The views draw what the app selects. They never open files and never import ``data``: the app
-hands them the study dataset or mesh, the output times and the quantities from ``analysis``.
+hands them the study dataset or mesh, the output times, the quantities from ``analysis`` and the
+lobe masks.
 
 Public interface
 - ``entity_mesh(study)``: one line cell per entity of a study dataset, with the arrays that are
   the same in every sample; the mesh the scene draws.
-- ``LungScene(mesh, times=None, quantities=())``: the 3D scene: airway and terminal-unit tubes,
-  joint spheres, and the translucent lung with its lobes around them.
+- ``lobe_surface(masks, mesh_from_index)``: the lung from lobe masks (boolean, indexed i, j, k),
+  one smoothed surface per lobe, placed by a 4 x 4 matrix per mask (mesh coordinates of a voxel
+  centre); None if the masks are empty.
+- ``LungScene(mesh, times=None, quantities=(), lung=None)``: the 3D scene: airway and
+  terminal-unit tubes, joint spheres, and the translucent lung with its lobes around them:
+  ``lung`` (e.g. from ``lobe_surface``), or else an illustrative lung fitted around the tree.
   - What it shows: ``mesh``, ``times`` (output times in s), ``units`` (which elements are
     terminal units), ``charted`` (the quantities with every run's values, by name),
     ``has_units`` and ``has_lung``.
@@ -28,14 +33,15 @@ Public interface
 - ``add_run_chart(state_name, height)``: the plot's widget.
 - ``add_demo_view()``: the starter scene, which needs no simulation files.
 
-Modules: ``geometry`` (tubes, spheres, nodes), ``lung_shape`` (the lung with its lobes),
-``coloring`` ("Color by" choices, legends, quantities over time), ``picking`` (what a click
-hits), ``scene``, ``legend``, ``run_chart`` and ``demo``.
+Modules: ``geometry`` (tubes, spheres, nodes), ``lung_shape`` (the lung with its lobes, from
+masks or illustrative), ``coloring`` ("Color by" choices, legends, quantities over time),
+``picking`` (what a click hits), ``scene``, ``legend``, ``run_chart`` and ``demo``.
 """
 
 from lungscope.views.demo import add_demo_view
 from lungscope.views.geometry import entity_mesh
 from lungscope.views.legend import add_legend
+from lungscope.views.lung_shape import lobe_surface
 from lungscope.views.run_chart import (
     RunChart,
     add_run_chart,
@@ -55,5 +61,6 @@ __all__ = [
     "element_title",
     "entity_mesh",
     "figure_at",
+    "lobe_surface",
     "run_chart",
 ]
