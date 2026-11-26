@@ -30,6 +30,7 @@ dev = ["pytest>=9.2,<10"]
 
 [project.scripts]
 lungscope = "lungscope.app:main"
+lungscope-fit-lobes = "lungscope.app:fit_lobes_main"
 
 [project.urls]
 Repository = "https://github.com/bgoderbauer/lungscope"
