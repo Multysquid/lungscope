@@ -21,8 +21,16 @@ Public interface
 - ``mean_pressure(study)``, ``mean_pressure_differential(study)``: means over the realizations.
 - ``pressure_std(study)``: standard deviation of the pressure over the realizations (ddof = 1).
 - ``time_quantities(study)``: all quantities that can be shown over time, in display order.
+- ``terminal_unit_centres(endpoints, reference_volume)``: midpoints of the elements with a
+  positive reference volume, e.g. of an input mesh from ``data.read_input``.
+- ``fit_lobes(units, masks, world_from_index)``: the affine transform from the lobe masks' image
+  coordinates to mesh coordinates that puts the terminal units into the lobes, for masks that
+  come without one. Returns a ``LobeFit``: ``mesh_from_world`` (4 x 4), ``inside`` (fraction of
+  the units inside a lobe), ``similarity_inside`` (the same without stretching) and ``per_lobe``
+  (units in each lobe).
 """
 
+from lungscope.analysis.lobe_fit import LobeFit, fit_lobes, terminal_unit_centres
 from lungscope.analysis.quantities import (
     TimeQuantity,
     element_values,
@@ -41,15 +49,18 @@ from lungscope.analysis.statistics import (
 )
 
 __all__ = [
+    "LobeFit",
     "Spread",
     "TimeQuantity",
     "element_values",
     "ensemble_mean",
+    "fit_lobes",
     "mean_pressure",
     "mean_pressure_differential",
     "pressure_std",
     "run_spread",
     "symmetric_range",
+    "terminal_unit_centres",
     "terminal_units",
     "time_quantities",
     "value_range",
