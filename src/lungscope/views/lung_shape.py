@@ -1,12 +1,14 @@
 """The translucent lung drawn around the airway tree: two lungs and their lobes.
 
-Styled like anatomical renderings: two lungs separated by the mediastinum, the right one (on the
-left of the front view) split into three lobes, the left one into two. The lobes are illustrative:
-the input carries no lobe information.
+``lobe_surface`` draws real lobes from lobe masks (e.g. segmented from a CT), placed on the mesh.
+Without masks, ``lung_surface`` draws an illustrative lung, styled like anatomical renderings:
+two lungs separated by the mediastinum, the right one (on the left of the front view) split into
+three lobes, the left one into two; the tree itself carries no lobe information.
 """
 
 import itertools
 from collections import defaultdict, deque
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
 import numpy as np
@@ -29,6 +31,49 @@ LUNG_COLOR = "#898781"
 LUNG_OPACITY = 0.15
 OBLIQUE_TILT = 45.0  # degrees from horizontal; the oblique fissure rises towards the back
 HORIZONTAL_LEVEL = 0.2  # right lung: horizontal fissure this far above the centre (x half-height)
+MASK_STEP = 2  # lobe masks are coarsened by this many voxels per axis before their surface is taken
+
+
+def lobe_surface(
+    masks: Sequence[np.ndarray], mesh_from_index: Sequence[np.ndarray], step: int = MASK_STEP
+) -> pv.PolyData | None:
+    """The lung from lobe masks: one closed, smoothed surface per lobe, in mesh coordinates.
+
+    ``masks``: one boolean voxel mask per lobe, indexed (i, j, k); ``mesh_from_index``: 4 x 4 per
+    mask, the mesh coordinates of the centre of voxel (i, j, k). Each mask is coarsened to the
+    fraction of every step x step x step block that is inside, and its surface is where that
+    fraction is one half. Neighbouring lobes touch, so their shared walls show the fissures.
+    Returns None if no mask has a voxel inside.
+    """
+    sections = []
+    for mask, matrix in zip(masks, mesh_from_index, strict=True):
+        fraction, matrix = _coarsen(np.asarray(mask, dtype=bool), np.asarray(matrix, dtype=float), step)
+        image = pv.ImageData(dimensions=fraction.shape)
+        image.point_data["inside"] = fraction.ravel(order="F")
+        lobe = image.contour([0.5], scalars="inside", method="flying_edges")
+        if lobe.n_points == 0:
+            continue
+        lobe.clear_data()
+        lobe = lobe.smooth_taubin(n_iter=20, pass_band=0.05)  # in voxels, before any stretching
+        lobe.points = np.asarray(lobe.points) @ matrix[:3, :3].T + matrix[:3, 3]
+        sections.append(lobe.compute_normals(auto_orient_normals=True))
+    if not sections:
+        return None
+    return surface(pv.merge(sections, merge_points=False))
+
+
+def _coarsen(mask: np.ndarray, matrix: np.ndarray, step: int) -> tuple[np.ndarray, np.ndarray]:
+    """Fraction inside per step^3 block, with a layer of empty blocks around it, and its 4 x 4.
+
+    Block (I, J, K) covers voxels step * I ... step * I + step - 1, so its centre is voxel
+    step * I + (step - 1) / 2; the empty layer shifts the blocks by one.
+    """
+    padded = np.pad(mask, [(0, -n % step) for n in mask.shape])
+    blocks = padded.reshape(padded.shape[0] // step, step, padded.shape[1] // step, step, -1, step)
+    fraction = np.pad(blocks.mean(axis=(1, 3, 5), dtype=np.float32), 1)
+    index_from_block = np.diag([step, step, step, 1.0])
+    index_from_block[:3, 3] = (step - 1) / 2 - step
+    return fraction, matrix @ index_from_block
 
 
 def lung_regions(nodes: Nodes, radii: np.ndarray) -> tuple[list[np.ndarray], int | None, int | None]:
