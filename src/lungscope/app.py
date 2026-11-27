@@ -159,6 +159,7 @@ def build_starter(server) -> SinglePageLayout:
     """The starter page: a generated VTK scene to check the setup without simulation files."""
     with SinglePageLayout(server) as layout:
         layout.title.set_text("LungScope")
+        _remove_footer(layout)
 
         with layout.content, html.Main(classes="pa-6"):
             html.H2("Starter scene", classes="text-h6")
@@ -334,7 +335,21 @@ def build_viewer(server, scene: LungScene, title: str) -> SinglePageWithDrawerLa
             layout.footer.clear()
             with layout.footer:
                 _time_bar(len(times))
+        else:
+            _remove_footer(layout)
     return layout
+
+
+def _remove_footer(layout) -> None:
+    """Remove the footer that trame's page layouts bring along.
+
+    It links to trame and Kitware ("© 2025 Kitware Inc.") and shows trame's busy indicator. The
+    footer element stays in the page but is empty, hidden and out of the app layout, which would
+    otherwise keep its height free at the bottom of the page.
+    """
+    layout.footer.clear()
+    layout.footer.app = None
+    layout.footer.hide()
 
 
 def _color_by_list() -> None:

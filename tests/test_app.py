@@ -123,6 +123,23 @@ def test_starter_page():
     assert "Starter scene" in page
 
 
+def test_no_page_keeps_trames_footer():
+    """trame's page layouts bring a footer with links to trame and Kitware; no page shows it.
+    Without a time bar the footer is hidden and out of the app layout, so it keeps no space free."""
+    starter = build_starter(get_server("test_footer_starter", client_type="vue3"))
+    mesh_scene = LungScene(entity_mesh(tiny_study()))
+    mesh = build_viewer(get_server("test_footer_mesh", client_type="vue3"), mesh_scene, "lung.vtu")
+    _, _, study = viewer("test_footer_study", started=False)
+    for layout in (starter, mesh, study):
+        assert "Kitware" not in layout.html
+        assert "Powered by trame" not in layout.html
+    for layout in (starter, mesh):
+        footer = layout.footer.html
+        assert 'style="display: none"' in footer
+        assert " app" not in footer
+    assert "time_index" in study.footer.html  # the study's footer is its time bar
+
+
 def test_popup_follows_the_click_the_time_step_and_the_coloring():
     server, scene, _ = viewer("test_popup")
     state = server.state
