@@ -15,7 +15,8 @@ mesh and its 4C result series, links them, checks the links and returns an ``xar
 
 NaN means "not defined for this element": 4C writes NaN, e.g. volume on airways. Only samples
 with status "complete" are loaded. Result cells are matched to input cells by their two
-endpoints, because 4C may reorder cells and writes no ids.
+endpoints, because 4C may reorder cells and writes no ids. An input array that 4C writes as well
+(``v_0`` in PneumoGen meshes) is taken from the results.
 """
 
 import json
@@ -87,7 +88,7 @@ def load_study(study_json: str | Path) -> xr.Dataset:
     }
     data_vars = {name: (("realization", "time", "entity"), np.stack(v)) for name, v in outputs.items()}
     for name in first:
-        if name == "entity_id":
+        if name == "entity_id" or name in outputs:
             continue
         stacked = np.stack([arrays[name] for _, arrays in inputs])
         if all(np.array_equal(row, stacked[0], equal_nan=stacked.dtype.kind == "f") for row in stacked):
