@@ -44,6 +44,7 @@ from lungscope.views import (
     run_chart,
 )
 
+TAB_TITLE = "LungScope"  # the browser tab's title; trame's default is "Trame"
 INK = "#52514e"
 MUTED = "#898781"
 DRAWER_WIDTH = 260
@@ -157,6 +158,7 @@ def fit_lobes_main() -> None:
 
 def build_starter(server) -> SinglePageLayout:
     """The starter page: a generated VTK scene to check the setup without simulation files."""
+    server.state.trame__title = TAB_TITLE
     with SinglePageLayout(server) as layout:
         layout.title.set_text("LungScope")
         _remove_footer(layout)
@@ -316,6 +318,7 @@ def build_viewer(server, scene: LungScene, title: str) -> SinglePageWithDrawerLa
                 state.time_index = current = index
 
     switch = {"color": "primary", "density": "compact", "hide_details": True, "classes": "mr-6 flex-grow-0"}
+    state.trame__title = TAB_TITLE
     with SinglePageWithDrawerLayout(server, width=DRAWER_WIDTH) as layout:
         layout.title.set_text(f"LungScope · {title}")
         with layout.toolbar:

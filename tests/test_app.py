@@ -140,6 +140,14 @@ def test_no_page_keeps_trames_footer():
     assert "time_index" in study.footer.html  # the study's footer is its time bar
 
 
+def test_pages_title_the_browser_tab():
+    """trame titles the browser tab "Trame"; every page sets LungScope instead."""
+    starter_server = get_server("test_tab_starter", client_type="vue3")
+    build_starter(starter_server)
+    study_server, _, _ = viewer("test_tab_study", started=False)
+    assert starter_server.state.trame__title == study_server.state.trame__title == "LungScope"
+
+
 def test_popup_follows_the_click_the_time_step_and_the_coloring():
     server, scene, _ = viewer("test_popup")
     state = server.state
